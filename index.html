@@ -609,213 +609,117 @@
 </div>
 
 <script>
-  const CIRCUMFERENCE = 50.27;
-  let refreshTimer = null;
-  let countdownTimer = null;
-  let countdownRemaining = 0;
-  let countdownTotal = 30;
+ 
+const CIRCUMFERENCE = 50.27;
+let refreshTimer = null;
+let countdownTimer = null;
+let countdownRemaining = 0;
+let countdownTotal = 30;
 
-  // Clock
-  function updateClock() {
-    document.getElementById('clock').textContent =
-      new Date().toLocaleTimeString('en-GB', { hour12: false });
+// Clock
+function updateClock() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-GB', { hour12: false });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+function toF(c) { return +(c * 9/5 + 32).toFixed(1); }
+
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const d = Math.floor((Date.now() - ts) / 1000);
+  if (d < 60) return d + 's ago';
+  if (d < 3600) return Math.floor(d/60) + 'm ago';
+  return Math.floor(d/3600) + 'h ago';
+}
+
+function setStatus(state, text) {
+  const dot = document.getElementById('statusDot');
+  dot.className = 'pulse ' + state;
+  document.getElementById('statusText').textContent = text;
+}
+
+function showError(msg) {
+  const b = document.getElementById('errorBanner');
+  b.textContent = '⚠ ' + msg;
+  b.style.display = 'block';
+  setStatus('error', 'Error');
+}
+
+function clearError() {
+  document.getElementById('errorBanner').style.display = 'none';
+}
+
+/* ✅ FIXED TEMP LOGIC */
+function tempClass(val, unit) {
+  if (val === null) return '';
+  if (val > 95) return 'hot';
+  if (val < 50) return 'cool-card';
+  return '';
+}
+
+function barClass(val) {
+  if (val > 95) return 'hot';
+  if (val < 50) return 'cool';
+  return '';
+}
+
+function barWidth(val, unit) {
+  if (val === null) return 0;
+
+  let min, max;
+  if (unit === 'F') {
+    min = 0;
+    max = 120;
+  } else {
+    min = -20;
+    max = 50;
   }
-  setInterval(updateClock, 1000);
-  updateClock();
 
-  function toF(c) { return +(c * 9/5 + 32).toFixed(1); }
-  function timeAgo(ts) {
-    if (!ts) return '—';
-    const d = Math.floor((Date.now() - ts) / 1000);
-    if (d < 60) return d + 's ago';
-    if (d < 3600) return Math.floor(d/60) + 'm ago';
-    return Math.floor(d/3600) + 'h ago';
-  }
+  const pct = ((val - min) / (max - min)) * 100;
+  return Math.max(0, Math.min(100, pct)).toFixed(1);
+}
 
-  function setStatus(state, text) {
-    const dot = document.getElementById('statusDot');
-    dot.className = 'pulse ' + state;
-    document.getElementById('statusText').textContent = text;
-  }
-
-  function showError(msg) {
-    const b = document.getElementById('errorBanner');
-    b.textContent = '⚠ ' + msg;
-    b.style.display = 'block';
-    setStatus('error', 'Error');
-  }
-
-  function clearError() {
-    document.getElementById('errorBanner').style.display = 'none';
-  }
-
-  function tempClass(val) {
-    if (val === null) return '';
-    if (val > 35) return 'hot';
-    if (val < 10) return 'cool-card';
-    return '';
-  }
-
-  function barClass(val) {
-    if (val > 35) return 'hot';
-    if (val < 10) return 'cool';
-    return '';
-  }
-
-  function barWidth(val, unit) {
-    if (val === null) return 0;
-    const c = unit === 'F' ? (val - 32) * 5/9 : val;
-    const pct = Math.max(0, Math.min(100, ((c + 20) / 80) * 100));
-    return pct.toFixed(1);
-  }
-
-  function startCountdown(seconds) {
-    countdownTotal = seconds;
-    countdownRemaining = seconds;
-    if (countdownTimer) clearInterval(countdownTimer);
+/* Countdown */
+function startCountdown(seconds) {
+  countdownTotal = seconds;
+  countdownRemaining = seconds;
+  if (countdownTimer) clearInterval(countdownTimer);
+  updateCountdown();
+  countdownTimer = setInterval(() => {
+    countdownRemaining--;
     updateCountdown();
-    countdownTimer = setInterval(() => {
-      countdownRemaining--;
-      updateCountdown();
-      if (countdownRemaining <= 0) clearInterval(countdownTimer);
-    }, 1000);
-  }
+    if (countdownRemaining <= 0) clearInterval(countdownTimer);
+  }, 1000);
+}
 
-  function updateCountdown() {
-    const circle = document.getElementById('countdownCircle');
-    const label = document.getElementById('countdownLabel');
-    const pct = countdownRemaining / countdownTotal;
-    const offset = CIRCUMFERENCE * (1 - pct);
-    circle.style.strokeDashoffset = offset;
-    label.textContent = countdownRemaining + 's';
-  }
+function updateCountdown() {
+  const circle = document.getElementById('countdownCircle');
+  const label = document.getElementById('countdownLabel');
+  const pct = countdownRemaining / countdownTotal;
+  const offset = CIRCUMFERENCE * (1 - pct);
+  circle.style.strokeDashoffset = offset;
+  label.textContent = countdownRemaining + 's';
+}
 
-  async function loadData() {
-    clearError();
-    const token = document.getElementById('tokenInput').value.trim();
-    const unit = document.getElementById('unitSelect').value;
-    if (!token) { showError('Enter your Ubidots token above.'); return; }
-    setStatus('loading', 'Fetching…');
+async function loadData() {
+  clearError();
+  const token = document.getElementById('tokenInput').value.trim();
+  const unit = document.getElementById('unitSelect').value;
 
-    try {
-      const devRes = await fetch('https://industrial.api.ubidots.com/api/v2.0/devices/?page_size=100', {
-        headers: { 'X-Auth-Token': token }
-      });
-      if (!devRes.ok) {
-        showError('Auth failed — status ' + devRes.status + '. Check your token.');
-        return;
-      }
-      const devData = await devRes.json();
-      const devices = devData.results || [];
+  if (!token) { showError('Enter your Ubidots token above.'); return; }
 
-      const allVars = [];
-      for (const dev of devices) {
-        const vRes = await fetch(
-          `https://industrial.api.ubidots.com/api/v2.0/devices/${dev.id}/variables/?page_size=100`,
-          { headers: { 'X-Auth-Token': token } }
-        );
-        if (!vRes.ok) continue;
-        const vData = await vRes.json();
-        for (const v of (vData.results || [])) {
-          const lbl = (v.label || '').toLowerCase();
-          const nm  = (v.name  || '').toLowerCase();
-          if (lbl.includes('temp') || nm.includes('temp') || lbl === 't') {
-            let rawVal = (v.lastValue && v.lastValue.value != null) ? v.lastValue.value : null;
-            let ts     = (v.lastValue && v.lastValue.timestamp) ? v.lastValue.timestamp : null;
-            let dispVal = rawVal;
-            if (rawVal !== null && unit === 'F') dispVal = toF(rawVal);
-            allVars.push({
-              device: dev.name || dev.label,
-              varName: v.name || v.label,
-              rawVal,
-              dispVal,
-              ts
-            });
-          }
-        }
-      }
+  setStatus('loading', 'Fetching…');
 
-      const grid = document.getElementById('grid');
+  try {
+    const devRes = await fetch('https://industrial.api.ubidots.com/api/v2.0/devices/?page_size=100', {
+      headers: { 'X-Auth-Token': token }
+    });
 
-      if (!allVars.length) {
-        grid.innerHTML = `<div class="empty">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-            <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
-          </svg>
-          <div>No temperature variables found.<br>Label your Ubidots variables "temperature" to show them here.</div>
-        </div>`;
-        document.getElementById('statsBar').style.display = 'none';
-      } else {
-        const vals = allVars.map(v => v.rawVal).filter(v => v !== null);
-        const avg  = vals.length ? (vals.reduce((a,b) => a+b, 0) / vals.length) : null;
-        const maxV = vals.length ? Math.max(...vals) : null;
-        const minV = vals.length ? Math.min(...vals) : null;
+    if (!devRes.ok) {
+      showError('Auth failed — status ' + devRes.status);
 
-        const fmt = (v, u) => {
-          if (v === null) return '—';
-          return (u === 'F' ? toF(v) : v.toFixed(1)) + ' °' + u;
-        };
-
-        document.getElementById('statCount').textContent = allVars.length;
-        document.getElementById('statAvg').textContent   = fmt(avg, unit);
-        document.getElementById('statMax').textContent   = fmt(maxV, unit);
-        document.getElementById('statMin').textContent   = fmt(minV, unit);
-        document.getElementById('statsBar').style.display = 'grid';
-
-        grid.innerHTML = allVars.map((v, i) => {
-          const tc = tempClass(v.rawVal);
-          const dispStr = v.dispVal !== null
-            ? `<span>${v.dispVal % 1 === 0 ? v.dispVal : parseFloat(v.dispVal).toFixed(1)}</span><span class="unit"> °${unit}</span>`
-            : `<span class="no-data">N/A</span>`;
-          const bw = barWidth(v.dispVal, unit);
-          const bc = barClass(v.rawVal);
-          return `<div class="sensor-card ${tc}" style="animation-delay:${i*0.04}s">
-            <div class="card-device">${v.device}</div>
-            <div class="card-varname">${v.varName}</div>
-            <div class="card-temp">${dispStr}</div>
-            <div class="temp-bar-wrap"><div class="temp-bar ${bc}" style="width:${bw}%"></div></div>
-            <div class="card-footer">
-              <span class="card-updated">${timeAgo(v.ts)}</span>
-              <span class="card-trend" style="color:${v.rawVal > 30 ? 'var(--warm)' : v.rawVal < 10 ? 'var(--cool)' : 'var(--text3)'}">
-                ${v.rawVal > 35 ? '▲ HOT' : v.rawVal < 5 ? '▼ COLD' : ''}
-              </span>
-            </div>
-          </div>`;
-        }).join('');
-      }
-
-      setStatus('active', devices.length + ' device' + (devices.length !== 1 ? 's' : ''));
-      document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
-
-    } catch (e) {
-      showError('Network error: ' + e.message);
-    }
-
-    scheduleRefresh();
-  }
-
-  function scheduleRefresh() {
-    if (refreshTimer) clearTimeout(refreshTimer);
-    const secs = parseInt(document.getElementById('intervalSelect').value);
-    startCountdown(secs);
-    refreshTimer = setTimeout(loadData, secs * 1000);
-  }
-
-  document.getElementById('intervalSelect').addEventListener('change', () => {
-    if (refreshTimer) clearTimeout(refreshTimer);
-    if (countdownTimer) clearInterval(countdownTimer);
-    scheduleRefresh();
-  });
-
-  function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
-    }
-  }
-
-  loadData();
 </script>
 </body>
 </html>
